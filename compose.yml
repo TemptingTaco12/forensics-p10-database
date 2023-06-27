@@ -1,0 +1,13 @@
+services:
+  neo4j:
+    image: malware-db-image
+    container_name: malware-db-container
+    ports:
+      - 7474:7474
+      - 7687:7687
+    # volumes:
+    #   - ./cyphers:/var/lib/neo4j/plugins
+    environment:
+      - NEO4J_AUTH=none
+      - NEO4J_initial_dbms_default__database=malware-db
+    restart: always
