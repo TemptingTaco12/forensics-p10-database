@@ -69,7 +69,7 @@ def is_float(s):
         return False
 
 def create_process_nodes(tx, csv_file, hash):
-    print(csv_file)
+    #print(csv_file)
     with open(csv_file, 'r') as file:
         reader = csv.reader(file)
 
