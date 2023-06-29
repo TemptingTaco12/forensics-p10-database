@@ -1,13 +1,21 @@
 services:
-  neo4j:
-    image: malware-db-image
+  malware-db:
+    build: 
+      context: .
+      dockerfile: neo4j.Dockerfile
     container_name: malware-db-container
     ports:
       - 7474:7474
       - 7687:7687
-    # volumes:
-    #   - ./cyphers:/var/lib/neo4j/plugins
     environment:
       - NEO4J_AUTH=none
       - NEO4J_initial_dbms_default__database=malware-db
     restart: always
+  
+  python:
+    build: 
+      context: .
+      dockerfile: python.Dockerfile
+    container_name: python-container
+    depends_on:
+      - malware-db
