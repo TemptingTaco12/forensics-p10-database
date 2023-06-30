@@ -111,9 +111,16 @@ CREATE (n:Process {'''
     for idx, header in enumerate(headers):
         if idx < len(headers) - 1:
             query += headers_cleaned[idx]
-            query += ": row.`"
+            query += ": "
+            if data_types[idx] == "int":
+                query += "toInteger("
+            elif data_types[idx] == "float":
+                query += "toFloat("
+            query += "row.`"
             query += header
             query += "`"
+            if data_types[idx] == "int" or data_types[idx] == "float":
+                query += ")"
             if idx < len(headers) - 2:
                 query += ", "
     
