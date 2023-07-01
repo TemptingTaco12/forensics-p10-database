@@ -1,5 +1,9 @@
 from neo4j import GraphDatabase
 import argparse
+import os
+import csv
+import re
+import pandas as pd
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(
@@ -11,18 +15,35 @@ parser.add_argument('--grab-instances', metavar='malware_type', type=str,
 parser.add_argument('--packet-sizes-gte', metavar='packet_size', type=int, 
     help='Pass a number to retrieve the malware instances and their associated samples that have ' +
     'an average packet size across all of their processes greater than or equal to this number.')
+parser.add_argument('--add-file', metavar='csv_file', type=argparse.FileType('r'), 
+    help='Pass in a csv file containing information about the malware')
+parser.add_argument('--add-hash', metavar='hash', type=str, 
+    help='Pass in the hash of assosiated to a malware instance.')
+parser.add_argument('--add-malware-instance', metavar='malware_instance', type=str, 
+    help='Pass in the name of the malware instance.')
+parser.add_argument('--add-malware-type', metavar='malware_type', type=str, 
+    help='Pass in the name of the malware type.')
 args = parser.parse_args()
 
 # Check if any argument is provided
 if not (
     args.grab_hashes or 
     args.grab_instances or 
-    args.packet_sizes_gte
+    args.packet_sizes_gte or
+    args.add_file or
+    args.add_hash or
+    args.add_malware_instance or
+    args.add_malware_type
     ):
     print('''Please provide a valid argument. Use either: 
+        --add-hash
+        --add-malware-instance
+        --add-malware-type
+        --add-file
         --grab-hashes
         --grab-instances
-        --packet-sizes-gte''')
+        --packet-sizes-gte
+        ''')
     exit()
 
 # Neo4j connection details
@@ -62,6 +83,146 @@ def query_malware_instances_with_packet_sizes(tx, packet_size):
     instances_with_hashes = [(record["malware_instance"], record["avg_packet_size"], record["hash"]) for record in result]
     return instances_with_hashes
 
+#Helper function to check if number is int
+def is_int(s):
+    try:
+        int(s)
+        return True
+    except ValueError:
+        return False
+
+#Helper function to check if number is float
+def is_float(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
+#Function to add a new process node
+def add_new_process(tx, malware_type, malware_instance, hash, csv_file):
+    #check if the malware type exist, else make it 
+    add_new_malware_type(tx, malware_type)
+
+    #check if the malware instace exist, else make it.
+    add_new_malware_instance(tx, malware_type, malware_instance)
+
+    #add a new sample node if it does not exist.
+    add_new_malware_sample(tx, malware_instance, hash)
+
+    #if file contains a hash column, then remove the column.
+    print(csv_file)
+
+    df = pd.DataFrame(csv_file)
+    if "hash" in df.columns or "Hash" in df.columns:
+        df.drop("hash", inplace=True, axis=1)
+
+    #check if file is a csv file
+    '''
+    _, ext = os.path.splitext(os.path.basename(os.path.abspath(csv_file)))
+    if not ext.lower() == '.csv':
+        print("only except csv files")
+        return False;
+    '''
+        
+    #add the content of the csv file.
+    with open(csv_file, 'r') as file:
+        reader = csv.reader(file)
+
+        # Read the first row
+        headers = next(reader)
+        # Do some string cleanup
+        headers_cleaned = [re.sub(r'^_', '', value.lower().replace(' ', '_').replace('/', '_per_')) for value in headers]
+
+        sample_data = next(reader)
+
+        data_types = []
+
+        for sample in sample_data:
+            if is_int(sample):
+                data_types.append("int")
+            elif is_float(sample):
+                data_types.append("float")
+            else:
+                data_types.append("string")
+    
+    query = "LOAD CSV WITH HEADERS FROM 'file:///"
+    query += csv_file
+    query += '''' AS row
+            WITH row WHERE '''
+    
+    for idx, header in enumerate(headers):
+        if idx < len(headers) - 1:
+            query += "row.`"
+            query += header
+            query += "` IS NOT NULL"
+            if idx < len(headers) - 2:
+                query += " AND "
+
+    query += '''
+        CREATE (n:Process {'''
+
+    for idx, header in enumerate(headers):
+        if idx < len(headers) - 1:
+            query += headers_cleaned[idx]
+            query += ": "
+            if data_types[idx] == "int":
+                query += "toInteger("
+            elif data_types[idx] == "float":
+                query += "toFloat("
+            query += "row.`"
+            query += header
+            query += "`"
+            if data_types[idx] == "int" or data_types[idx] == "float":
+                query += ")"
+            if idx < len(headers) - 2:
+                query += ", "
+    
+    query += "})"
+    
+    query += '''
+        WITH n
+        MATCH (sampleNode:Sample {hash: $hash})
+        CREATE (sampleNode)-[:PERFORMED]->(n)
+        '''
+    
+#    print(query)
+    tx.run(query, hash=hash) 
+    return True
+
+
+def add_new_malware_instance(tx, malware_type, malware_instance):
+    query = '''
+            MERGE (node1:Malware_Instance {name: $malware_instance})
+            WITH node1
+            MATCH (node2:Malware_Type)
+            WHERE node2.name = $malware_type
+            MERGE (node1)-[r:IS_A]->(node2)
+            '''
+    tx.run(query, malware_instance=malware_instance, malware_type=malware_type)
+
+
+def add_new_malware_type(tx, malware_type):
+    query = '''
+        MERGE (node1:Malware_Type {name: $malware_type})
+        WITH node1
+        MATCH (node2:Malware)
+        MERGE (node1)-[r:IS_A]->(node2)
+        '''
+    tx.run(query, malware_type=malware_type)
+
+
+def add_new_malware_sample(tx, malware_instance, hash):
+    query = '''
+            MERGE (node1:Sample {hash: $hash})
+            WITH node1
+            MATCH (node2:Malware_Instance)
+            WHERE node2.name = $malware_instance
+            MERGE (node1)-[r:IS_A]->(node2)
+            '''
+
+    tx.run(query, malware_instance=malware_instance, hash=hash)
+
 # Execute the queries and print the results
 with driver.session(database="malware-db") as session:
     if args.grab_hashes:
@@ -93,6 +254,39 @@ with driver.session(database="malware-db") as session:
                 print()
         else:
             print(f"No malware instances found with average packet sizes >= {args.packet_sizes_gte}.")
+    if args.add_malware_type:
+        try:
+            session.execute_write(add_new_malware_type, args.add_malware_type)
+            print("The malware type have been added")
+        except:
+            print("could not add the malware type, check your arguments and try again. Remember to add quotes around the malware type name")
+    if args.add_malware_instance:
+        try:
+            session.execute_write(add_new_malware_instance, args.add_malware_type, args.add_malware_instance)
+            print("The malware instance have been added")
+        except:
+            print("could not add the malware instance, check your arguments and try again. Remember to add quotes around the malware instance name") 
+    if args.add_hash:
+        try:
+            session.execute_write(add_new_malware_sample, args.add_malware_instance, args.add_hash)
+            print("The hash have been added")
+        except:
+            print("could not add the malware sample with hash, check your arguments and try again. Remember to add quotes around the hash") 
+    if args.add_file:
+        if not args.add_hash and not args.add_malware_instance and not args.add_malware_type:
+            print("when adding a new process you also need to specify the hash using --add-hash, the name of the malware type using --add-malware-type, " + 
+                  "and the name of the malware instance using --add-malware-instance")
+        else:
+            #try:
+                res = session.execute_write(add_new_process, args.add_malware_type, args.add_malware_instance, args.add_hash, args.add_file)
+                if res:
+                    print("Successfully oploaded file")
+                else:
+                    print("Something went wrong, check that you uploaded a .csv file")
+            #except:
+                #print("An error occured, could not upload file")
+
+
 
 # Close the Neo4j driver
 driver.close()

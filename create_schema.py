@@ -95,7 +95,7 @@ def create_process_nodes(tx, csv_file, hash):
     query = "LOAD CSV WITH HEADERS FROM 'file:///"
     query += csv_file
     query += '''' AS row
-WITH row WHERE '''
+            WITH row WHERE '''
     
     for idx, header in enumerate(headers):
         if idx < len(headers) - 1:
@@ -106,7 +106,7 @@ WITH row WHERE '''
                 query += " AND "
 
     query += '''
-CREATE (n:Process {'''
+        CREATE (n:Process {'''
 
     for idx, header in enumerate(headers):
         if idx < len(headers) - 1:
@@ -127,10 +127,10 @@ CREATE (n:Process {'''
     query += "})"
     
     query += '''
-WITH n
-MATCH (sampleNode:Sample {hash: $hash})
-CREATE (sampleNode)-[:PERFORMED]->(n)
-'''
+        WITH n
+        MATCH (sampleNode:Sample {hash: $hash})
+        CREATE (sampleNode)-[:PERFORMED]->(n)
+        '''
     
 #    print(query)
     tx.run(query, hash=hash)            
