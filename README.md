@@ -1,4 +1,4 @@
-# forensics-p6-database
+# Forensics P6 - Neo4j Malware Database
 
 ## The project
 This is a project for the Forensics class at Eurecom.
