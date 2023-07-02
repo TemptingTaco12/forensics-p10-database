@@ -128,21 +128,8 @@ def add_new_process(tx, malware_type, malware_instance, hash, csv_file):
         headers = next(reader)
         # Do some string cleanup
         headers_cleaned = [re.sub(r'^_', '', value.lower().replace(' ', '_').replace('/', '_per_')) for value in headers]
-
-        sample_data = next(reader)
-
-        data_types = []
-
-        for sample in sample_data:
-            if is_int(sample):
-                data_types.append("int")
-            elif is_float(sample):
-                data_types.append("float")
-            else:
-                data_types.append("string")
     
     df = pd.read_csv(csv_file)
-    number_of_rows = len(df)
     query = ''''''
     counter = 0
     for index, row in df.iterrows():
@@ -266,14 +253,14 @@ with driver.session(database="malware-db") as session:
             print("when adding a new process you also need to specify the hash using --add-hash, the name of the malware type using --add-malware-type, " + 
                   "and the name of the malware instance using --add-malware-instance")
         else:
-            #try:
+            try:
                 res = session.execute_write(add_new_process, args.add_malware_type, args.add_malware_instance, args.add_hash, args.add_file)
                 if res:
                     print("Successfully oploaded file")
                 else:
                     print("Something went wrong, check that you uploaded the path to a csv file")
-            #except:
-                #print("An error occured, could not upload file")
+            except:
+                print("An error occured, could not upload file")
 
 
 
