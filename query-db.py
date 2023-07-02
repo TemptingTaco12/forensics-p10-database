@@ -7,7 +7,20 @@ import pandas as pd
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(
-    description='Query the malware database to grab and print information on recorded malware as needed.')
+    description='Query the malware database to grab and print information on recorded malware as needed. NB! the queries are case sensitive')
+
+parser.add_argument('--add-file', nargs="+", metavar='csv_file', type=str,
+    help='Used when wanting to add a new malware sample. Takes multiple arguments and has the following format: --add-file <file> <hash> <malware-instace> <malware-type>')
+parser.add_argument('--add-hash', nargs="+", metavar='add_hash', type=str,
+    help='Used when wanting to add a new malware sample. Takes multiple arguments and has the following format: --add-hash <hash> <malware-instace> <malware-type>')
+parser.add_argument('--add-malware-instance', nargs="+", metavar='add_malware_instance', type=str,
+    help='Used when wanting to add a new malware instance. Takes multiple arguments and has the following format: --add-malware-instance <malware_instance> <malware_type>')
+parser.add_argument('--add-malware-type', metavar='add_malware_type', type=str,
+    help='Used when wanting to add a new malware instance. Has the following format: --add-malware-type <malware_type>')
+parser.add_argument('--download-data', metavar='download-data', 
+    help='Download processes related to a hash')
+parser.add_argument('--get-properties', nargs="+", metavar='get_properties', type=str, 
+                    help="Used to query for a propery of a process. To query, first specify the property then the value like this: --get-properties <property> <value>")
 parser.add_argument('--grab-hashes', metavar='malware_instance', type=str, 
     help='Pass the name of a malware instance to retrieve the samples associated with this instance.')
 parser.add_argument('--grab-instances', metavar='malware_type', type=str, 
@@ -15,16 +28,8 @@ parser.add_argument('--grab-instances', metavar='malware_type', type=str,
 parser.add_argument('--packet-sizes-gte', metavar='packet_size', type=int, 
     help='Pass a number to retrieve the malware instances and their associated samples that have ' +
     'an average packet size across all of their processes greater than or equal to this number.')
-parser.add_argument('--add-file', metavar='csv_file', type=str, 
-    help='Pass in the path to the csv file containing information about the malware')
-parser.add_argument('--add-hash', metavar='hash', type=str, 
-    help='Pass in the hash of assosiated to a malware instance.')
-parser.add_argument('--add-malware-instance', metavar='malware_instance', type=str, 
-    help='Pass in the name of the malware instance.')
-parser.add_argument('--add-malware-type', metavar='malware_type', type=str, 
-    help='Pass in the name of the malware type.')
-parser.add_argument('--download-data', metavar='download-data', type=str, 
-    help='Download processes related to a hash, pass in the hash to match on')
+parser.add_argument('--search-malware-hash', metavar='malware_hash',
+    help='Pass in the hash and retrieve the malware instance and malware type of that hash.')
 args = parser.parse_args()
 
 # Check if any argument is provided
@@ -36,7 +41,9 @@ if not (
     args.add_hash or
     args.add_malware_instance or
     args.add_malware_type or 
-    args.download_data
+    args.download_data or
+    args.search_malware_hash or 
+    args.get_properties
     ):
     print('''Please provide a valid argument. Use either: 
         --add-hash
@@ -47,6 +54,8 @@ if not (
         --grab-hashes
         --grab-instances
         --packet-sizes-gte
+        --search-malware-hash
+        --get-properties
         ''')
     exit()
 
@@ -87,32 +96,19 @@ def query_malware_instances_with_packet_sizes(tx, packet_size):
     instances_with_hashes = [(record["malware_instance"], record["avg_packet_size"], record["hash"]) for record in result]
     return instances_with_hashes
 
-#Helper function to check if number is int
-def is_int(s):
-    try:
-        int(s)
-        return True
-    except ValueError:
-        return False
-
-#Helper function to check if number is float
-def is_float(s):
-    try:
-        float(s)
-        return True
-    except ValueError:
-        return False
-
 #Function to add a new process node
 def add_new_process(tx, malware_type, malware_instance, hash, csv_file):
     #check if the malware type exist, else make it 
-    add_new_malware_type(tx, malware_type)
+    m_type = check_type(tx, malware_type)
 
     #check if the malware instace exist, else make it.
-    add_new_malware_instance(tx, malware_type, malware_instance)
+    instance = check_instance(tx, malware_instance)
 
     #add a new sample node if it does not exist.
-    add_new_malware_sample(tx, malware_instance, hash)
+    sample = check_sample(tx, hash)
+    if not m_type or not instance or not sample:
+        print("Some of the given paramenters does not exist. Check the spelling and try again")
+        return False
 
     #if file contains a hash column, then remove the column.
     df = pd.read_csv(csv_file)
@@ -172,14 +168,19 @@ def add_new_process(tx, malware_type, malware_instance, hash, csv_file):
 
 
 def add_new_malware_instance(tx, malware_type, malware_instance):
-    query = '''
-            MERGE (node1:Malware_Instance {name: $malware_instance})
-            WITH node1
-            MATCH (node2:Malware_Type)
-            WHERE node2.name = $malware_type
-            MERGE (node1)-[r:IS_A]->(node2)
-            '''
-    tx.run(query, malware_instance=malware_instance, malware_type=malware_type)
+    if not check_type(tx, malware_type):
+        print("the given malware type does not exist")
+        return False
+    else:
+        query = '''
+                MERGE (node1:Malware_Instance {name: $malware_instance})
+                WITH node1
+                MATCH (node2:Malware_Type)
+                WHERE node2.name = $malware_type
+                MERGE (node1)-[r:IS_A]->(node2)
+                '''
+        tx.run(query, malware_instance=malware_instance, malware_type=malware_type)
+        return True
 
 
 def add_new_malware_type(tx, malware_type):
@@ -191,23 +192,71 @@ def add_new_malware_type(tx, malware_type):
         '''
     tx.run(query, malware_type=malware_type)
 
+#Function to check if the malware instance exist
+def check_instance(tx, malware_instance):
+    query = '''
+            MATCH (n:Malware_Instance) 
+            WHERE n.name = $malware_instance 
+            RETURN EXISTS((n)--())
+        '''
+    result = tx.run(query, malware_instance=malware_instance)
+    try:
+        res = result.single()[0]
+        return True
+    except:
+        return False
+
+#Function to check if the malware type exist
+def check_type(tx, malwareType):
+    query = '''
+            MATCH (n:Malware_Type) 
+            WHERE n.name = $malwareType 
+            RETURN EXISTS((n)--())
+        '''
+    result = tx.run(query, malwareType=malwareType)
+    try:
+        res = result.single()[0]
+        return True
+    except:
+        return False
+
+#Function to check if the malware type exist
+def check_sample(tx, hash):
+    query = '''
+            MATCH (n:Sample) 
+            WHERE n.hash = $hash 
+            RETURN EXISTS((n)--())
+        '''
+    result = tx.run(query, hash=hash)
+    try:
+        res = result.single()[0]
+        return True
+    except:
+        return False
 
 def add_new_malware_sample(tx, malware_instance, hash):
-    query = '''
-            MERGE (node1:Sample {hash: $hash})
-            WITH node1
-            MATCH (node2:Malware_Instance)
-            WHERE node2.name = $malware_instance
-            MERGE (node1)-[r:IS_A]->(node2)
-            '''
+    if not check_instance(tx, malware_instance):
+        print("The given malware instance does not exist")
+        return False
+    else:
+        query = '''
+                MERGE (node1:Sample {hash: $hash})
+                WITH node1
+                MATCH (node2:Malware_Instance)
+                WHERE node2.name = $malware_instance
+                MERGE (node1)-[r:IS_A]->(node2)
+                '''
 
-    tx.run(query, malware_instance=malware_instance, hash=hash)
+        tx.run(query, malware_instance=malware_instance, hash=hash)
+        return True
 
+#Function to export the properties of process nodes, related to a hash, into a csv file. 
 def export_node_properties_to_csv(tx, hash):
-        # Usage
     csv_file = "./output.csv"
+    if not check_sample(tx, hash):
+        print("The given hash does not exist")
    
-    # Retrieve properties of nodes with a parent label
+    # Retrieve properties of nodes realted to the hash
     query = '''
             MATCH (n)<-[:PERFORMED]-(n2:Sample { hash: $hash}) 
             RETURN n'''
@@ -220,7 +269,6 @@ def export_node_properties_to_csv(tx, hash):
         node = record["n"]
         property_keys.update(node.keys())
         records.append([node.get(value) for value in property_keys])
-        #property_values = [node.get(value) for value in property_keys]
 
     # Write the data to the CSV file
     with open(csv_file, "w", newline="") as file:
@@ -232,28 +280,32 @@ def export_node_properties_to_csv(tx, hash):
             writer = csv.writer(file)
             writer.writerow(property_keys)  # Write the header row
             for record in records:
-                #node = record["n"]
-                #print(node)
-                #property_values = [node.get(value) for value in property_keys]
-                #print(property_values)
                 writer.writerow(record)
 
-        """# Rewind the result cursor before iterating over the records again
-        #result.rewind()
+# Function to query and print malware instance and type of a give malware hash
+def query_malware_instance_type_with_hash(tx, hash):
+    query = '''
+    MATCH (n:Sample {hash: $hash})-[:IS_A]->(n2:Malware_Instance)-[:IS_A]->(n3:Malware_Type)
+    RETURN n2.name AS malware_instance, n3.name AS malware_type
+    '''
+    result = tx.run(query, hash=hash)
+    instance_type = [(record["malware_instance"], record["malware_type"]) for record in result]
+    return instance_type
 
-        for record in result:
-            node = record["n"]
-            properties = dict(node)
-
-            writer.writerow(properties)
-        
-        result.rewind()
-
-        for record in result:
-            node = record["n"]
-            properties = key: node[key] for key in property_keys
-
-            writer.writerow(properties.values())"""
+#Function to get hashes of all processes with a certain property.
+def query_properties_of_nodes(tx, property, value):
+    dots = r"\."
+    pattern1 = fr".*([{dots}]).*[{dots}].*"
+    special_chars = r"/|:|-"
+    pattern2 = fr".*([{special_chars}]).*"
+    query = ""
+    if re.match(pattern1, value) or re.match(pattern2, value):
+        query = "MATCH (n:Process)<-[:PERFORMED]-(n2:Sample) WHERE n.{property} = '{value}' RETURN n2.hash as sample_hashes".format(property=property, value=value)
+    else:
+        query = "MATCH (n:Process)<-[:PERFORMED]-(n2:Sample) WHERE n.{property} = {value} RETURN n2.hash as sample_hashes".format(property=property, value=value)
+    result = tx.run(query)
+    samples = [record["sample_hashes"] for record in result]
+    return samples
 
 # Execute the queries and print the results
 with driver.session(database="malware-db") as session:
@@ -291,38 +343,56 @@ with driver.session(database="malware-db") as session:
             session.execute_write(add_new_malware_type, args.add_malware_type)
             print("The malware type have been added")
         except:
-            print("could not add the malware type, check your arguments and try again. Remember to add quotes around the malware type name")
+            print("could not add the malware type, check your arguments and try again.")
     if args.add_malware_instance:
-        try:
-            session.execute_write(add_new_malware_instance, args.add_malware_type, args.add_malware_instance)
-            print("The malware instance have been added")
-        except:
-            print("could not add the malware instance, check your arguments and try again. Remember to add quotes around the malware instance name") 
+            res = session.execute_write(add_new_malware_instance, args.add_malware_instance[1], args.add_malware_instance[0])
+            if res:
+                print("The malware instance have been added")
+            else:
+                print("could not add the malware instance, check your arguments and try again.") 
     if args.add_hash:
-        try:
-            session.execute_write(add_new_malware_sample, args.add_malware_instance, args.add_hash)
+        res = session.execute_write(add_new_malware_sample, args.add_hash[1], args.add_hash[0])
+        if res:
             print("The hash have been added")
-        except:
-            print("could not add the malware sample with hash, check your arguments and try again. Remember to add quotes around the hash") 
+        else:
+            print("could not add the malware sample with hash, check your arguments and try again.") 
     if args.add_file:
-        if not args.add_hash and not args.add_malware_instance and not args.add_malware_type:
-            print("when adding a new process you also need to specify the hash using --add-hash, the name of the malware type using --add-malware-type, " + 
-                  "and the name of the malware instance using --add-malware-instance")
+        try:
+            res = session.execute_write(add_new_process, args.add_file[3], args.add_file[2], args.add_file[1], args.add_file[0])
+            if res:
+                print("Successfully uploaded the file")
+            else:
+                print("Something went wrong, check that you uploaded the path to a csv file, and spelled the other parameters correctly")
+        except:
+            print("An error occured, could not upload file")
+    if args.download_data:
+        if not args.hash:
+            print("You did not specify the hash using --hash")
         else:
             try:
-                res = session.execute_write(add_new_process, args.add_malware_type, args.add_malware_instance, args.add_hash, args.add_file)
-                if res:
-                    print("Successfully oploaded file")
-                else:
-                    print("Something went wrong, check that you uploaded the path to a csv file")
+                session.execute_write(export_node_properties_to_csv, args.hash)
+                print("successfully uploaded the data to file, check the output.csv file in the current directory")
             except:
-                print("An error occured, could not upload file")
-    if args.download_data:
-        try:
-            session.execute_write(export_node_properties_to_csv, args.download_data)
-            print("successfully uploaded the data to file, check the output.csv file in the current directory")
-        except:
-            print("could not donwload the data, did you pass in the correct parameter?")
+                print("could not donwload the data, did you pass in the correct parameter?")
+
+    if args.search_malware_hash:
+        instance_type = session.execute_read(query_malware_instance_type_with_hash, args.search_malware_hash)
+        if instance_type:
+            print(f"Malware instance and type associated with malware hash '{args.search_malware_hash}':")
+            for instance, type in instance_type:
+                print(f"Malware instance: {instance}")
+                print(f"Malware type: {type}")
+        else:
+            print(f"No malware instances or types found for malware hash '{args.search_malware_hash}'.")
+
+    if args.get_properties:
+        samples = session.execute_read(query_properties_of_nodes, args.get_properties[0], args.get_properties[1])
+        if samples:
+            print(f"Samples hashes associated with the propety '{args.get_properties[0]}'='{args.get_properties[1]}':")
+            for hash in samples:
+                print(f"Sample hash: {hash}")
+        else:
+            print(f"No hashes are assosiated with the given property '{args.get_properties[0]}'='{args.get_properties[1]}'.")
 
 
 
