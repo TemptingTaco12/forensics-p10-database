@@ -23,6 +23,8 @@ parser.add_argument('--add-malware-instance', metavar='malware_instance', type=s
     help='Pass in the name of the malware instance.')
 parser.add_argument('--add-malware-type', metavar='malware_type', type=str, 
     help='Pass in the name of the malware type.')
+parser.add_argument('--download-data', metavar='download-data', type=str, 
+    help='Download processes related to a hash, pass in the hash to match on')
 args = parser.parse_args()
 
 # Check if any argument is provided
@@ -33,13 +35,15 @@ if not (
     args.add_file or
     args.add_hash or
     args.add_malware_instance or
-    args.add_malware_type
+    args.add_malware_type or 
+    args.download_data
     ):
     print('''Please provide a valid argument. Use either: 
         --add-hash
         --add-malware-instance
         --add-malware-type
         --add-file
+        --download-data
         --grab-hashes
         --grab-instances
         --packet-sizes-gte
@@ -199,6 +203,58 @@ def add_new_malware_sample(tx, malware_instance, hash):
 
     tx.run(query, malware_instance=malware_instance, hash=hash)
 
+def export_node_properties_to_csv(tx, hash):
+        # Usage
+    csv_file = "./output.csv"
+   
+    # Retrieve properties of nodes with a parent label
+    query = '''
+            MATCH (n)<-[:PERFORMED]-(n2:Sample { hash: $hash}) 
+            RETURN n'''
+    result = tx.run(query, hash=hash)
+
+    # Extract all unique property keys from the result
+    property_keys = set()
+    records = []
+    for record in result:
+        node = record["n"]
+        property_keys.update(node.keys())
+        records.append([node.get(value) for value in property_keys])
+        #property_values = [node.get(value) for value in property_keys]
+
+    # Write the data to the CSV file
+    with open(csv_file, "w", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=property_keys)
+        writer.writeheader()
+
+        # Write the data to the CSV file
+        with open(csv_file, "w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(property_keys)  # Write the header row
+            for record in records:
+                #node = record["n"]
+                #print(node)
+                #property_values = [node.get(value) for value in property_keys]
+                #print(property_values)
+                writer.writerow(record)
+
+        """# Rewind the result cursor before iterating over the records again
+        #result.rewind()
+
+        for record in result:
+            node = record["n"]
+            properties = dict(node)
+
+            writer.writerow(properties)
+        
+        result.rewind()
+
+        for record in result:
+            node = record["n"]
+            properties = key: node[key] for key in property_keys
+
+            writer.writerow(properties.values())"""
+
 # Execute the queries and print the results
 with driver.session(database="malware-db") as session:
     if args.grab_hashes:
@@ -261,6 +317,13 @@ with driver.session(database="malware-db") as session:
                     print("Something went wrong, check that you uploaded the path to a csv file")
             except:
                 print("An error occured, could not upload file")
+    if args.download_data:
+        try:
+            session.execute_write(export_node_properties_to_csv, args.download_data)
+            print("successfully uploaded the data to file, check the output.csv file in the current directory")
+        except:
+            print("could not donwload the data, did you pass in the correct parameter?")
+
 
 
 
