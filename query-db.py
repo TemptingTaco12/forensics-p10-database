@@ -15,8 +15,8 @@ parser.add_argument('--grab-instances', metavar='malware_type', type=str,
 parser.add_argument('--packet-sizes-gte', metavar='packet_size', type=int, 
     help='Pass a number to retrieve the malware instances and their associated samples that have ' +
     'an average packet size across all of their processes greater than or equal to this number.')
-parser.add_argument('--add-file', metavar='csv_file', type=argparse.FileType('r'), 
-    help='Pass in a csv file containing information about the malware')
+parser.add_argument('--add-file', metavar='csv_file', type=str, 
+    help='Pass in the path to the csv file containing information about the malware')
 parser.add_argument('--add-hash', metavar='hash', type=str, 
     help='Pass in the hash of assosiated to a malware instance.')
 parser.add_argument('--add-malware-instance', metavar='malware_instance', type=str, 
@@ -111,24 +111,19 @@ def add_new_process(tx, malware_type, malware_instance, hash, csv_file):
     add_new_malware_sample(tx, malware_instance, hash)
 
     #if file contains a hash column, then remove the column.
-    print(csv_file)
-
-    df = pd.DataFrame(csv_file)
+    df = pd.read_csv(csv_file)
     if "hash" in df.columns or "Hash" in df.columns:
         df.drop("hash", inplace=True, axis=1)
 
     #check if file is a csv file
-    '''
-    _, ext = os.path.splitext(os.path.basename(os.path.abspath(csv_file)))
+    _, ext = os.path.splitext(csv_file)
     if not ext.lower() == '.csv':
         print("only except csv files")
         return False;
-    '''
         
     #add the content of the csv file.
     with open(csv_file, 'r') as file:
         reader = csv.reader(file)
-
         # Read the first row
         headers = next(reader)
         # Do some string cleanup
@@ -146,48 +141,42 @@ def add_new_process(tx, malware_type, malware_instance, hash, csv_file):
             else:
                 data_types.append("string")
     
-    query = "LOAD CSV WITH HEADERS FROM 'file:///"
-    query += csv_file
-    query += '''' AS row
-            WITH row WHERE '''
-    
-    for idx, header in enumerate(headers):
-        if idx < len(headers) - 1:
-            query += "row.`"
-            query += header
-            query += "` IS NOT NULL"
-            if idx < len(headers) - 2:
-                query += " AND "
+    df = pd.read_csv(csv_file)
+    number_of_rows = len(df)
+    query = ''''''
+    counter = 0
+    for index, row in df.iterrows():
+        # Iterate over each column in the row
+        query = '''
+                CREATE (n:Process { '''
+        for column_name, cell_value in row.items():
+            # Access the header value for each column
 
-    query += '''
-        CREATE (n:Process {'''
+            #header_value = df.columns[df.columns.get_loc(column_name)]
+            header_value = headers_cleaned[counter]
+            is_last_column = column_name == df.columns[-1]
 
-    for idx, header in enumerate(headers):
-        if idx < len(headers) - 1:
-            query += headers_cleaned[idx]
-            query += ": "
-            if data_types[idx] == "int":
-                query += "toInteger("
-            elif data_types[idx] == "float":
-                query += "toFloat("
-            query += "row.`"
-            query += header
-            query += "`"
-            if data_types[idx] == "int" or data_types[idx] == "float":
-                query += ")"
-            if idx < len(headers) - 2:
-                query += ", "
-    
-    query += "})"
-    
-    query += '''
-        WITH n
-        MATCH (sampleNode:Sample {hash: $hash})
-        CREATE (sampleNode)-[:PERFORMED]->(n)
-        '''
-    
-#    print(query)
-    tx.run(query, hash=hash) 
+            if type(cell_value)==int:
+                cell_value = f'toInteger({cell_value})'
+            elif type(cell_value)==float:
+                cell_value = f'toFloat({cell_value})'
+            else:
+                cell_value = "'"+str(cell_value)+"'"
+
+            if is_last_column:
+                query += header_value + ": " + cell_value + " })"
+                counter=0
+            else:
+                query += header_value + ":" + cell_value + ", "
+                counter+=1
+
+        query += '''
+                WITH n
+                MATCH (sampleNode:Sample {hash: $hash})
+                CREATE (sampleNode)-[:PERFORMED]->(n)
+                '''
+        tx.run(query, hash=hash) 
+
     return True
 
 
@@ -282,7 +271,7 @@ with driver.session(database="malware-db") as session:
                 if res:
                     print("Successfully oploaded file")
                 else:
-                    print("Something went wrong, check that you uploaded a .csv file")
+                    print("Something went wrong, check that you uploaded the path to a csv file")
             #except:
                 #print("An error occured, could not upload file")
 
