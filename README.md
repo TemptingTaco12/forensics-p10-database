@@ -35,18 +35,29 @@ The script "query-db.py" can be used for querying the database.
 To use the command line interface run
  - python 3 script query-db.py
 
-Together with one of the following arguments:
-|          Option          |Description|
+Together with one of the following arguments to query information from the database:
+|Option          |Description|
 |--------------------------|-----------|
 |--grab-hashes|Pass the name of a malware instance to retrieve the samples associated with this instance.|   
 |--grab-instances|Pass the name of a malware type to retrieve the associated malware instances.|
 |--packet-sizes-gte|Pass a number to retrieve the malware instances and their associated samples that have an average packet size across all of their processes greater than or equal to this number.|
+|--search-malware-hash|Pass a malware hash to retrieve malware instance and type.|
+
+Or together with all of these options to add an entry:
+
+|Option          |Description|
+-----------------|-----------|
 |--add-file|Pass in the path to the csv file containing information about the malware.|
 |--add-hash|Pass in the hash of assosiated to a malware instance.|
 |--add-malware-instance|Pass in the name of the malware instance.|
 |--add-malware-type|Pass in the name of the malware type.|
+
+Or with this option to download processes:
+
+|Option          |Description|
+|----------------|-----------|
 |--download-data|Download processes related to a hash, pass in the hash to match on.|
-|--search-malware-hash|Pass a malware hash to retrieve malware instance and type.|
+
 
 
 ## Conclusion
