@@ -42,21 +42,21 @@ Together with one of the following arguments to query information from the datab
 |--packet-sizes-gte|Pass a number to retrieve the malware instances and their associated samples that have an average packet size across all of their processes greater than or equal to this number.|
 |--search-malware-hash|Pass a malware hash to retrieve malware instance and type.|
 
-Or together with all of these options to add an entry:
+Or together with these options to add an entry:
 
 |Option          |Description|
 -----------------|-----------|
-|--add-malware-type|Used when wanting to add a new malware instance. Has the following format: --add-malware-type <malware_type>|
-|--add-malware-instance|Used when wanting to add a new malware instance. Takes multiple arguments and has the following format: --add-malware-instance <malware_instance> <malware_type>|
-|--add-sample|Used when wanting to add a new malware sample. Takes multiple arguments and has the following format: --add-hash <hash> <malware-instace>|
-|--import-file|Used when wanting to import data from a csv file. Takes multiple arguments and has the following format: --import-file <file> <hash> <malware-instace> <malware-type>|
-|--get-properties|Used to query for a sample based on its property values. To query, first specify the property then the value like this: --get-properties <property> <value>|
+|--add-malware-type|Used when wanting to add a new malware instance. Has the following format: --add-malware-type \<malware_type\>|
+|--add-malware-instance|Used when wanting to add a new malware instance. Takes multiple arguments and has the following format: --add-malware-instance \<malware_instance\> \<malware_type\>|
+|--add-sample|Used when wanting to add a new malware sample. Takes multiple arguments and has the following format: --add-hash \<hash\> \<malware-instace\>|
+|--import-file|Used when wanting to import data from a csv file. Takes multiple arguments and has the following format: --import-file \<file\> \<hash\> \<malware-instace\> \<malware-type\>|
+|--get-properties|Used to query for a sample based on its property values. To query, first specify the property then the value like this: --get-properties \<property\> \<value\>|
 
 Or with this option to download processes:
 
 |Option          |Description|
 |----------------|-----------|
-|--download-data|Used when wanting to add a new malware instance. Has the following format: --add-malware-type <malware_type>|
+|--download-data|Used when wanting to add a new malware instance. Has the following format: --add-malware-type \<malware_type\>|
 
 Note that input is case sensitive and should match the values of what is stored in the database in order to query back data.
 
