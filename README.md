@@ -26,7 +26,8 @@ To stop the data base run:
 ### Usage:
 
 #### Web Console:
-To explore the data via neo4j's Web Console, you can point your browser to localhost:7474.    
+To explore the data via neo4j's Web Console, you can point your browser to localhost:7474. If the console asks you to provide credentials, select the no authentication option as the database does not require credentials to use.
+
 See https://www.docker.com/products/docker-desktop/ for more information on how to use the Web Console.
 
 #### Command Line Interface
@@ -63,5 +64,5 @@ Note that input is case sensitive and should match the values of what is stored 
 ## Conclusion
 This database uses neo4j, which is a graph database, because of its qualities within efficiently finding relationships between entities and the good scalability that is available with this database.
 
-Further work that could be done on this project is adding more queries for more functionality in the command line interface. In addition, we would also want to incorporate adding pointers to external documents and adding more input and error checking into the queries for the command line interface.
+Further work that could be done on this project is adding more queries for more functionality in the command line interface. In addition, we would also want to incorporate adding pointers to external documents and adding more input and error checking into the queries for the command line interface. Also, if this were to be used in an actual production environment, we would need to implement security features to protect the database and ensure integrity with the data stored.
 
